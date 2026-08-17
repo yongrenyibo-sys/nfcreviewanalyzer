@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/favicon.ico', (req, res) => res.status(404).end());
+app.get('/', (req, res) => res.redirect('/dashboard.html'));
 
 function genCode() {
   return crypto.randomBytes(4).toString('hex');
@@ -190,11 +191,15 @@ app.get('/api/stores/:id/reviews', async (req, res) => {
   });
 });
 
-// ---- 5. レビュー数スナップショット取得(Vercel Cronから叩く用) ----
-app.post('/api/cron/snapshot-reviews', async (req, res) => {
-  const secret = req.headers['x-cron-secret'];
-  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
-    return res.status(401).json({ error: 'unauthorized' });
+// ---- 5. レビュー数スナップショット取得 ----
+// Vercel Cronは自動でGETリクエストを送り、CRON_SECRETを設定していれば
+// "Authorization: Bearer <CRON_SECRET>" ヘッダーを自動で付与してくれる。
+// 手動でcurl等から叩く場合は x-cron-secret ヘッダーでもOKにしてある。
+app.all('/api/cron/snapshot-reviews', async (req, res) => {
+  if (process.env.CRON_SECRET) {
+    const bearer = req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+    const manual = req.headers['x-cron-secret'] === process.env.CRON_SECRET;
+    if (!bearer && !manual) return res.status(401).json({ error: 'unauthorized' });
   }
 
   const { fetchGoogleReviewCount } = require('./lib/reviews');
