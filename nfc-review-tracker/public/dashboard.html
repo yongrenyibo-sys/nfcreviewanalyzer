@@ -231,8 +231,14 @@
       </div>
       <button class="btn" id="addBtn">カードを作成</button>
 
+      <label style="display:flex; align-items:center; gap:8px; margin-top:20px; font-size:12.5px; color:var(--muted); cursor:pointer; user-select:none;">
+        <input type="checkbox" id="anonToggle" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+        店舗名を隠す(A店・B店…表示)
+      </label>
+
       <div class="store-list" id="storeList"></div>
     </div>
+
 
     <div class="main" id="main">
       <div class="empty-state">左のフォームから店舗を登録するか、リストから選択してください。</div>
@@ -243,6 +249,7 @@
   const API = '';
   let stores = [];
   let activeId = null;
+  let anonymize = false;
   let clickChart = null;
   let reviewChart = null;
   let reviewWeeklyChart = null;
@@ -263,11 +270,21 @@
     if(!activeId && stores.length){ selectStore(stores[0].id); }
   }
 
+  function letterLabel(index){
+    // 0->A, 1->B, ... 25->Z, 26->AA, 27->AB ...
+    let n = index, label = '';
+    do {
+      label = String.fromCharCode(65 + (n % 26)) + label;
+      n = Math.floor(n / 26) - 1;
+    } while (n >= 0);
+    return label + '店';
+  }
+
   function renderStoreList(){
     const list = document.getElementById('storeList');
-    list.innerHTML = stores.map(s => `
+    list.innerHTML = stores.map((s,i) => `
       <div class="store-item ${s.id===activeId?'active':''}" data-id="${s.id}">
-        <div class="name">${escapeHtml(s.name)}</div>
+        <div class="name">${anonymize ? letterLabel(i) : escapeHtml(s.name)}</div>
         <div class="code">/r/${s.code}</div>
       </div>
     `).join('');
@@ -275,6 +292,11 @@
       el.addEventListener('click', ()=> selectStore(el.dataset.id));
     });
   }
+
+  document.getElementById('anonToggle').addEventListener('change', (e)=>{
+    anonymize = e.target.checked;
+    renderStoreList();
+  });
 
   function escapeHtml(str){
     const d = document.createElement('div');
@@ -388,6 +410,7 @@
         }]
       },
       options: {
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
         plugins:{ legend:{ display:false } },
         scales:{
           x:{ grid:{ color:'rgba(130,170,255,0.12)' }, ticks:{ color:'#7c88a8', maxRotation:0, autoSkip:true, maxTicksLimit:10 } },
@@ -408,10 +431,14 @@
             borderColor: '#2ee6b8',
             backgroundColor: 'rgba(46,230,184,0.15)',
             fill: true,
-            tension: 0.3
+            tension: 0.3,
+            pointRadius: 4,
+            pointHitRadius: 30,
+            pointHoverRadius: 6
           }]
         },
         options: {
+          interaction: { mode: 'index', intersect: false },
           plugins:{ legend:{ display:false } },
           scales:{
             x:{ grid:{ color:'rgba(130,170,255,0.12)' }, ticks:{ color:'#7c88a8' } },
@@ -432,6 +459,7 @@
           }]
         },
         options: {
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
           plugins:{
             legend:{ display:false },
             tooltip:{
@@ -469,6 +497,7 @@
           }]
         },
         options: {
+          interaction: { mode: 'nearest', axis: 'x', intersect: false },
           plugins:{
             legend:{ display:false },
             tooltip:{
