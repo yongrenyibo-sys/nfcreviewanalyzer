@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NFCレビューカード ダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115;
+    --surface:#171a21;
+    --surface-2:#1f232c;
+    --line:#2a2f3a;
+    --text:#e8eaef;
+    --muted:#8a90a2;
+    --accent:#4f8cff;
+    --good:#3ecf8e;
+    --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;
+  }
+  .top{
+    padding:24px 28px;
+    border-bottom:1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .top h1{ font-size:18px; margin:0; letter-spacing:0.02em; }
+  .top span{ color:var(--muted); font-size:12.5px; }
+  .layout{
+    display:grid;
+    grid-template-columns:300px 1fr;
+    gap:0;
+    min-height:calc(100vh - 65px);
+  }
+  .sidebar{
+    border-right:1px solid var(--line);
+    padding:20px;
+  }
+  .sidebar h2{ font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin:0 0 12px; }
+  .form-field{ margin-bottom:10px; }
+  .form-field label{ display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .form-field input{
+    width:100%;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:7px;
+    padding:8px 10px;
+    font-size:13px;
+  }
+  .btn{
+    width:100%;
+    padding:10px 0;
+    border-radius:7px;
+    border:none;
+    background:var(--accent);
+    color:#fff;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    margin-top:6px;
+  }
+  .btn:hover{ opacity:0.9; }
+  .store-list{
+    margin-top:24px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .store-item{
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid var(--line);
+    cursor:pointer;
+    font-size:13px;
+  }
+  .store-item:hover{ border-color:var(--accent); }
+  .store-item.active{ background:rgba(79,140,255,0.12); border-color:var(--accent); }
+  .store-item .name{ font-weight:600; margin-bottom:2px; }
+  .store-item .code{ color:var(--muted); font-size:11px; font-family:monospace; }
+
+  .main{ padding:24px 28px; }
+  .empty-state{ color:var(--muted); font-size:14px; margin-top:40px; text-align:center; }
+
+  .card-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }
+  .stat-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:16px 18px;
+  }
+  .stat-card .label{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .stat-card .value{ font-size:26px; font-weight:700; }
+  .stat-card .delta{ font-size:12.5px; margin-top:4px; }
+  .delta.up{ color:var(--good); }
+  .delta.down{ color:var(--bad); }
+  .delta.flat{ color:var(--muted); }
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:18px 20px;
+    margin-bottom:20px;
+  }
+  .panel h3{ margin:0 0 12px; font-size:13.5px; color:var(--muted); font-weight:600; }
+  .redirect-box{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:9px 12px;
+    font-family:monospace;
+    font-size:12.5px;
+    word-break:break-all;
+  }
+  .redirect-box button{
+    flex-shrink:0;
+    background:var(--surface);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:6px;
+    padding:5px 10px;
+    font-size:11.5px;
+    cursor:pointer;
+  }
+  canvas{ max-height:260px; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>NFCレビューカード ダッシュボード</h1>
+    <span id="clock"></span>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <h2>カードを新規登録</h2>
+      <div class="form-field">
+        <label>店舗名</label>
+        <input id="f-name" placeholder="例: 〇〇カフェ 本店">
+      </div>
+      <div class="form-field">
+        <label>飛ばし先URL(Googleレビュー投稿URL)</label>
+        <input id="f-target" placeholder="https://g.page/r/xxxxx/review">
+      </div>
+      <div class="form-field">
+        <label>Place ID(任意・レビュー数推移を見る場合)</label>
+        <input id="f-place" placeholder="ChIJxxxxxxxxxxxxxxxx">
+      </div>
+      <button class="btn" id="addBtn">カードを作成</button>
+
+      <div class="store-list" id="storeList"></div>
+    </div>
+
+    <div class="main" id="main">
+      <div class="empty-state">左のフォームから店舗を登録するか、リストから選択してください。</div>
+    </div>
+  </div>
+
+<script>
+  const API = '';
+  let stores = [];
+  let activeId = null;
+  let clickChart = null;
+  let reviewChart = null;
+  let reviewWeeklyChart = null;
+  let cvrChart = null;
+
+  function fmtDelta(count, percent){
+    if(count === null || count === undefined) return '<span class="delta flat">比較データ不足</span>';
+    const cls = count > 0 ? 'up' : count < 0 ? 'down' : 'flat';
+    const sign = count > 0 ? '+' : '';
+    const pct = percent === null ? '' : `(${sign}${percent}%)`;
+    return `<span class="delta ${cls}">${sign}${count} 先週比 ${pct}</span>`;
+  }
+
+  async function loadStores(){
+    const res = await fetch(`${API}/api/stores`);
+    stores = await res.json();
+    renderStoreList();
+    if(!activeId && stores.length){ selectStore(stores[0].id); }
+  }
+
+  function renderStoreList(){
+    const list = document.getElementById('storeList');
+    list.innerHTML = stores.map(s => `
+      <div class="store-item ${s.id===activeId?'active':''}" data-id="${s.id}">
+        <div class="name">${escapeHtml(s.name)}</div>
+        <div class="code">/r/${s.code}</div>
+      </div>
+    `).join('');
+    [...list.querySelectorAll('.store-item')].forEach(el=>{
+      el.addEventListener('click', ()=> selectStore(el.dataset.id));
+    });
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  async function selectStore(id){
+    activeId = id;
+    renderStoreList();
+    const store = stores.find(s=>s.id===id);
+    const [statsRes, reviewsRes] = await Promise.all([
+      fetch(`${API}/api/stores/${id}/stats`),
+      fetch(`${API}/api/stores/${id}/reviews`)
+    ]);
+    const stats = await statsRes.json();
+    const reviews = await reviewsRes.json();
+    renderMain(store, stats, reviews);
+  }
+
+  function renderMain(store, stats, reviews){
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card-row">
+        <div class="stat-card">
+          <div class="label">今週のアクセス数</div>
+          <div class="value">${stats.thisWeek}</div>
+          <div>${fmtDelta(stats.deltaCount, stats.deltaPercent)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">先週のアクセス数</div>
+          <div class="value">${stats.lastWeek}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Googleレビュー数(最新)</div>
+          <div class="value">${reviews.snapshots.length ? reviews.snapshots[reviews.snapshots.length-1].reviewCount : '—'}</div>
+          <div>${reviews.hasPlaceId ? fmtDelta(reviews.deltaCount, null) : '<span class="delta flat">Place ID未設定</span>'}</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>このカードのタップ用URL(NFCに書き込むURL)</h3>
+        <div class="redirect-box">
+          <span id="redirectUrl">${store.redirectUrl}</span>
+          <button id="copyBtn">コピー</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>日別アクセス数(過去30日)</h3>
+        <canvas id="clickChart"></canvas>
+      </div>
+
+      <div class="panel">
+        <h3>Googleレビュー数の推移</h3>
+        ${reviews.snapshots.length ? '<canvas id="reviewChart"></canvas>' :
+          '<div class="empty-state" style="margin-top:0;">Place IDを設定し、scripts/snapshot-reviews.js を毎日実行するとここに推移が表示されます。</div>'}
+      </div>
+
+      <div class="panel">
+        <h3>Googleレビュー数 週別(直近8週間)</h3>
+        ${reviews.snapshots.length ? '<canvas id="reviewWeeklyChart"></canvas>' :
+          '<div class="empty-state" style="margin-top:0;">記録が貯まるとここに週ごとの件数と増加数が表示されます。</div>'}
+      </div>
+
+      <div class="panel">
+        <h3>タップ→レビュー転換率(CVR・直近8週間)</h3>
+        ${reviews.snapshots.length ? '<canvas id="cvrChart"></canvas>' :
+          '<div class="empty-state" style="margin-top:0;">レビュー数の記録が貯まるとここにCVRが表示されます。</div>'}
+      </div>
+    `;
+
+    document.getElementById('copyBtn').addEventListener('click', ()=>{
+      navigator.clipboard.writeText(store.redirectUrl);
+      document.getElementById('copyBtn').textContent = 'コピーしました';
+      setTimeout(()=> document.getElementById('copyBtn').textContent = 'コピー', 1500);
+    });
+
+    if(clickChart) clickChart.destroy();
+    clickChart = new Chart(document.getElementById('clickChart'), {
+      type: 'bar',
+      data: {
+        labels: stats.daily.map(d => d.date.slice(5)),
+        datasets: [{
+          label: 'アクセス数',
+          data: stats.daily.map(d => d.count),
+          backgroundColor: '#4f8cff'
+        }]
+      },
+      options: {
+        plugins:{ legend:{ display:false } },
+        scales:{
+          x:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2', maxRotation:0, autoSkip:true, maxTicksLimit:10 } },
+          y:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2', precision:0 } }
+        }
+      }
+    });
+
+    if(reviews.snapshots.length){
+      if(reviewChart) reviewChart.destroy();
+      reviewChart = new Chart(document.getElementById('reviewChart'), {
+        type: 'line',
+        data: {
+          labels: reviews.snapshots.map(s => s.date.slice(5)),
+          datasets: [{
+            label: 'レビュー数',
+            data: reviews.snapshots.map(s => s.reviewCount),
+            borderColor: '#3ecf8e',
+            backgroundColor: 'rgba(62,207,142,0.15)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          plugins:{ legend:{ display:false } },
+          scales:{
+            x:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2' } },
+            y:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2', precision:0 } }
+          }
+        }
+      });
+
+      if(reviewWeeklyChart) reviewWeeklyChart.destroy();
+      reviewWeeklyChart = new Chart(document.getElementById('reviewWeeklyChart'), {
+        type: 'bar',
+        data: {
+          labels: reviews.weekly.map(w => `${w.label}\n(〜${w.end.slice(5)})`),
+          datasets: [{
+            label: '増加数',
+            data: reviews.weekly.map(w => w.delta),
+            backgroundColor: reviews.weekly.map((w,i) => i === reviews.weekly.length-1 ? '#3ecf8e' : '#2f4a3d')
+          }]
+        },
+        options: {
+          plugins:{
+            legend:{ display:false },
+            tooltip:{
+              callbacks:{
+                label: (ctx) => {
+                  const w = reviews.weekly[ctx.dataIndex];
+                  if(w.delta === null) return 'データなし';
+                  return w.delta > 0 ? `+${w.delta}件(累計${w.reviewCount}件)` : `${w.delta}件(累計${w.reviewCount}件)`;
+                }
+              }
+            }
+          },
+          scales:{
+            x:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2' } },
+            y:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2', precision:0 } }
+          }
+        }
+      });
+
+      const cvrData = reviews.weekly.map((w, i) => {
+        const taps = (stats.weeklyTaps && stats.weeklyTaps[i]) ? stats.weeklyTaps[i].count : null;
+        if (w.delta === null || taps === null || taps === 0) return null;
+        return Math.round((w.delta / taps) * 1000) / 10; // 小数点1桁
+      });
+
+      if(cvrChart) cvrChart.destroy();
+      cvrChart = new Chart(document.getElementById('cvrChart'), {
+        type: 'bar',
+        data: {
+          labels: reviews.weekly.map(w => `${w.label}\n(〜${w.end.slice(5)})`),
+          datasets: [{
+            label: 'CVR',
+            data: cvrData,
+            backgroundColor: cvrData.map((v,i) => i === cvrData.length-1 ? '#ffb347' : '#5c4a2a')
+          }]
+        },
+        options: {
+          plugins:{
+            legend:{ display:false },
+            tooltip:{
+              callbacks:{
+                label: (ctx) => {
+                  const i = ctx.dataIndex;
+                  const w = reviews.weekly[i];
+                  const taps = (stats.weeklyTaps && stats.weeklyTaps[i]) ? stats.weeklyTaps[i].count : null;
+                  if(cvrData[i] === null) return 'データ不足';
+                  return `タップ${taps}回 → レビュー増加${w.delta}件(CVR ${cvrData[i]}%)`;
+                }
+              }
+            }
+          },
+          scales:{
+            x:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2' } },
+            y:{ grid:{ color:'#2a2f3a' }, ticks:{ color:'#8a90a2', callback:(v)=> v + '%' } }
+          }
+        }
+      });
+    }
+  }
+
+  document.getElementById('addBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('f-name').value.trim();
+    const targetUrl = document.getElementById('f-target').value.trim();
+    const placeId = document.getElementById('f-place').value.trim();
+    if(!name || !targetUrl){ alert('店舗名とURLは必須です'); return; }
+
+    const res = await fetch(`${API}/api/stores`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, targetUrl, placeId: placeId || undefined })
+    });
+    if(!res.ok){ alert('作成に失敗しました'); return; }
+    const store = await res.json();
+    document.getElementById('f-name').value='';
+    document.getElementById('f-target').value='';
+    document.getElementById('f-place').value='';
+    await loadStores();
+    selectStore(store.id);
+  });
+
+  function tickClock(){
+    document.getElementById('clock').textContent = new Date().toLocaleString('ja-JP');
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  loadStores();
+</script>
+</body>
+</html>
