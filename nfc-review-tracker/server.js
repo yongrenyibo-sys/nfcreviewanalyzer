@@ -138,6 +138,67 @@ app.delete('/api/stores/:id', async (req, res) => {
 });
 
 // ---- 3. アクセス統計 ----
+// ---- 5. ダッシュボード用: stats + reviews を1回の通信でまとめて返す ----
+// 店舗切り替え時の通信回数を2回→1回に減らして、体感速度を改善する。
+app.get('/api/stores/:id/dashboard', async (req, res) => {
+  const storeId = req.params.id;
+  const days56 = lastNDays(56);
+  const since = days56[0];
+
+  const [clicksRes, storeRes, snapshotsRes] = await Promise.all([
+    supabase.from('clicks').select('date').eq('store_id', storeId).gte('date', since),
+    supabase.from('stores').select('place_id').eq('id', storeId).maybeSingle(),
+    supabase.from('review_snapshots').select('date, review_count, rating').eq('store_id', storeId).order('date', { ascending: true })
+  ]);
+
+  if (clicksRes.error) return res.status(500).json({ error: clicksRes.error.message });
+  if (snapshotsRes.error) return res.status(500).json({ error: snapshotsRes.error.message });
+
+  const counts = Object.fromEntries(days56.map(d => [d, 0]));
+  clicksRes.data.forEach(c => { if (counts[c.date] !== undefined) counts[c.date]++; });
+
+  const days = days56.slice(-30);
+  const daily = days.map(d => ({ date: d, count: counts[d] }));
+  const sum = arr => arr.reduce((a, d) => a + counts[d], 0);
+  const thisWeek = sum(days.slice(-7));
+  const lastWeek = sum(days.slice(-14, -7));
+  const deltaCount = thisWeek - lastWeek;
+  const deltaPercent = lastWeek === 0 ? null : Math.round((deltaCount / lastWeek) * 100);
+
+  const weeklyTaps = [];
+  for (let w = 7; w >= 0; w--) {
+    const endDate = new Date(); endDate.setDate(endDate.getDate() - w * 7);
+    const startDate = new Date(); startDate.setDate(startDate.getDate() - (w * 7 + 6));
+    const endStr = todayStr(endDate);
+    const startStr = todayStr(startDate);
+    let count = 0;
+    for (const d of days56) { if (d >= startStr && d <= endStr) count += counts[d]; }
+    weeklyTaps.push({ end: endStr, count });
+  }
+
+  const snapshots = snapshotsRes.data.map(r => ({ date: r.date, reviewCount: r.review_count, rating: r.rating }));
+  let reviewDeltaCount = null;
+  if (snapshots.length >= 2) {
+    const latest = snapshots[snapshots.length - 1];
+    const latestDate = new Date(latest.date);
+    let baseline = null;
+    for (let i = snapshots.length - 2; i >= 0; i--) {
+      const diffDays = (latestDate - new Date(snapshots[i].date)) / 86400000;
+      if (diffDays >= 6.5) { baseline = snapshots[i]; break; }
+    }
+    if (baseline) reviewDeltaCount = latest.reviewCount - baseline.reviewCount;
+  }
+  const weeklySource = snapshots.map(s => ({ date: s.date, review_count: s.reviewCount }));
+
+  res.json({
+    stats: { daily, thisWeek, lastWeek, deltaCount, deltaPercent, weeklyTaps },
+    reviews: {
+      snapshots, deltaCount: reviewDeltaCount, hasPlaceId: !!(storeRes.data && storeRes.data.place_id),
+      weekly: weeklyReviewBuckets(weeklySource, 8)
+    }
+  });
+});
+
 app.get('/api/stores/:id/stats', async (req, res) => {
   const storeId = req.params.id;
   const days56 = lastNDays(56); // CVR計算(直近8週間)にも使うため56日分取得

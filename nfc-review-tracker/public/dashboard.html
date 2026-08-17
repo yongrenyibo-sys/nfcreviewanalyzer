@@ -308,12 +308,12 @@
     activeId = id;
     renderStoreList();
     const store = stores.find(s=>s.id===id);
-    const [statsRes, reviewsRes] = await Promise.all([
-      fetch(`${API}/api/stores/${id}/stats`),
-      fetch(`${API}/api/stores/${id}/reviews`)
-    ]);
-    const stats = await statsRes.json();
-    const reviews = await reviewsRes.json();
+
+    // データが届くまでの間、切り替えたことがすぐ分かるようにする(体感速度の改善)
+    document.getElementById('main').innerHTML = '<div class="empty-state">読み込み中…</div>';
+
+    const res = await fetch(`${API}/api/stores/${id}/dashboard`);
+    const { stats, reviews } = await res.json();
     renderMain(store, stats, reviews);
   }
 
@@ -322,12 +322,12 @@
     main.innerHTML = `
       <div class="card-row">
         <div class="stat-card">
-          <div class="label">今週のアクセス数</div>
+          <div class="label">今週のタップ数</div>
           <div class="value">${stats.thisWeek}</div>
           <div>${fmtDelta(stats.deltaCount, stats.deltaPercent)}</div>
         </div>
         <div class="stat-card">
-          <div class="label">先週のアクセス数</div>
+          <div class="label">先週のタップ数</div>
           <div class="value">${stats.lastWeek}</div>
         </div>
         <div class="stat-card">
@@ -347,7 +347,7 @@
       </div>
 
       <div class="panel">
-        <h3>日別アクセス数(過去30日)</h3>
+        <h3>日別タップ数(過去30日)</h3>
         <canvas id="clickChart"></canvas>
       </div>
 
@@ -404,7 +404,7 @@
       data: {
         labels: stats.daily.map(d => d.date.slice(5)),
         datasets: [{
-          label: 'アクセス数',
+          label: 'タップ数',
           data: stats.daily.map(d => d.count),
           backgroundColor: '#4da3ff'
         }]
