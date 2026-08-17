@@ -134,6 +134,22 @@
     cursor:pointer;
   }
   canvas{ max-height:260px; }
+
+  @media (max-width: 760px){
+    .top{ padding:16px; flex-direction:column; align-items:flex-start; gap:4px; }
+    .top h1{ font-size:16px; }
+    .layout{ display:block; min-height:auto; }
+    .sidebar{ border-right:none; border-bottom:1px solid var(--line); padding:16px; }
+    .main{ padding:16px; }
+    .card-row{ grid-template-columns:1fr; gap:10px; }
+    .stat-card .value{ font-size:22px; }
+    .panel{ padding:14px 16px; }
+    canvas{ max-height:220px; }
+    .redirect-box{ flex-direction:column; align-items:stretch; }
+    .redirect-box button{ width:100%; padding:8px 0; }
+    .store-list{ flex-direction:row; overflow-x:auto; gap:8px; padding-bottom:4px; }
+    .store-item{ flex:0 0 auto; min-width:140px; }
+  }
 </style>
 </head>
 <body>
@@ -151,11 +167,11 @@
       </div>
       <div class="form-field">
         <label>飛ばし先URL(Googleレビュー投稿URL)</label>
-        <input id="f-target" placeholder="https://g.page/r/xxxxx/review">
+        <input id="f-target" placeholder="https://search.google.com/local/writereview?placeid=...">
       </div>
-      <div class="form-field">
-        <label>Place ID(任意・レビュー数推移を見る場合)</label>
-        <input id="f-place" placeholder="ChIJxxxxxxxxxxxxxxxx">
+      <div class="form-field" id="placeIdPreview" style="display:none;">
+        <label>Place ID(URLから自動検出)</label>
+        <input id="f-place" readonly style="opacity:0.75;">
       </div>
       <button class="btn" id="addBtn">カードを作成</button>
 
@@ -249,6 +265,7 @@
           <span id="redirectUrl">${store.redirectUrl}</span>
           <button id="copyBtn">コピー</button>
         </div>
+        <button id="deleteBtn" style="margin-top:12px;width:100%;padding:9px 0;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--bad);font-size:12.5px;cursor:pointer;">この店舗を削除する</button>
       </div>
 
       <div class="panel">
@@ -279,6 +296,28 @@
       navigator.clipboard.writeText(store.redirectUrl);
       document.getElementById('copyBtn').textContent = 'コピーしました';
       setTimeout(()=> document.getElementById('copyBtn').textContent = 'コピー', 1500);
+    });
+
+    const deleteBtn = document.getElementById('deleteBtn');
+    deleteBtn.addEventListener('click', async ()=>{
+      if(deleteBtn.dataset.armed === '1'){
+        const res = await fetch(`${API}/api/stores/${store.id}`, { method:'DELETE' });
+        if(!res.ok){ alert('削除に失敗しました'); return; }
+        activeId = null;
+        await loadStores();
+        if(stores.length){ selectStore(stores[0].id); }
+        else {
+          document.getElementById('main').innerHTML = '<div class="empty-state">左のフォームから店舗を登録するか、リストから選択してください。</div>';
+          renderStoreList();
+        }
+      } else {
+        deleteBtn.dataset.armed = '1';
+        deleteBtn.textContent = 'もう一度押すと完全に削除します';
+        setTimeout(()=>{
+          deleteBtn.dataset.armed = '0';
+          deleteBtn.textContent = 'この店舗を削除する';
+        }, 3000);
+      }
     });
 
     if(clickChart) clickChart.destroy();
@@ -395,6 +434,30 @@
         }
       });
     }
+  }
+
+  document.getElementById('f-target').addEventListener('input', (e)=>{
+    const preview = document.getElementById('placeIdPreview');
+    const placeInput = document.getElementById('f-place');
+    const extracted = extractPlaceIdClient(e.target.value.trim());
+    if(extracted){
+      placeInput.value = extracted;
+      preview.style.display = 'block';
+    } else {
+      preview.style.display = 'none';
+      placeInput.value = '';
+    }
+  });
+
+  function extractPlaceIdClient(url){
+    if(!url) return null;
+    try{
+      const u = new URL(url);
+      const q = u.searchParams.get('placeid') || u.searchParams.get('place_id');
+      if(q) return q;
+    } catch(e){ /* 不正なURLはスキップ */ }
+    const m = url.match(/ChIJ[a-zA-Z0-9_-]+/);
+    return m ? m[0] : null;
   }
 
   document.getElementById('addBtn').addEventListener('click', async ()=>{

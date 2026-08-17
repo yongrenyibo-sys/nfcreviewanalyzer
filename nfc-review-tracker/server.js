@@ -59,6 +59,17 @@ function weeklyReviewBuckets(snapshotsAsc, weeksCount = 8) {
 const recentHits = new Map();
 const DUPLICATE_GUARD_MS = 2000;
 
+function extractPlaceId(url) {
+  try {
+    const u = new URL(url);
+    const fromQuery = u.searchParams.get('placeid') || u.searchParams.get('place_id');
+    if (fromQuery) return fromQuery;
+    const match = url.match(/ChIJ[a-zA-Z0-9_-]+/); // GoogleのPlace IDは大抵 "ChIJ" で始まる
+    if (match) return match[0];
+  } catch (e) { /* URLとして不正な場合は諦める */ }
+  return null;
+}
+
 // ---- 1. 計測付きリダイレクト ----
 app.get('/r/:code', async (req, res) => {
   if (req.params.code === 'favicon.ico') {
@@ -104,9 +115,11 @@ app.post('/api/stores', async (req, res) => {
   if (!name || !targetUrl) return res.status(400).json({ error: 'name と targetUrl は必須です' });
   if (!/^https?:\/\//.test(targetUrl)) return res.status(400).json({ error: 'targetUrl は http(s):// で始まる必要があります' });
 
+  const resolvedPlaceId = placeId || extractPlaceId(targetUrl);
+
   const { data, error } = await supabase
     .from('stores')
-    .insert({ name, target_url: targetUrl, place_id: placeId || null, code: genCode() })
+    .insert({ name, target_url: targetUrl, place_id: resolvedPlaceId, code: genCode() })
     .select().single();
 
   if (error) return res.status(500).json({ error: error.message });
